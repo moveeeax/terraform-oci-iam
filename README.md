@@ -9,7 +9,7 @@ statements.
 
 ```hcl
 module "iam" {
-  source = "github.com/cybercapybara/terraform-oci-iam"
+  source = "github.com/moveeeax/terraform-oci-iam"
 
   compartment_id = var.compartment_id
   tenancy_id     = var.tenancy_id
