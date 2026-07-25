@@ -31,13 +31,57 @@ variable "policy_description" {
 }
 
 variable "statements" {
-  description = "List of IAM policy statements granting the group permissions."
+  description = <<-EOT
+    List of IAM policy statements granting the group permissions.
+
+    OCI policy statements are free-form strings: the provider forwards them verbatim
+    and a typo is only rejected by the service at apply time (or, worse, silently
+    produces a policy that grants nothing). The validations below catch the common
+    shapes of that mistake before an apply is attempted.
+  EOT
   type        = list(string)
 
   validation {
     condition     = length(var.statements) > 0
     error_message = "At least one policy statement must be provided."
   }
+
+  # Every statement must start with one of the four OCI policy verbs. Catches
+  # typos ("Alow group ...") and stray blank/comment lines.
+  validation {
+    condition = alltrue([
+      for s in var.statements : can(regex("(?i)^\\s*(allow|endorse|admit|define)\\s", s))
+    ])
+    error_message = "Every policy statement must begin with Allow, Endorse, Admit or Define. Offending statements: ${join(" | ", [for s in var.statements : s if !can(regex("(?i)^\\s*(allow|endorse|admit|define)\\s", s))])}"
+  }
+
+  # Allow statements must be "Allow <subject> to <verb> <resource-type> in <scope>".
+  # A statement missing the permission verb or the scope is accepted by Terraform
+  # but rejected — or misinterpreted — by OCI.
+  validation {
+    condition = alltrue([
+      for s in var.statements :
+      !can(regex("(?i)^\\s*allow\\s", s)) ||
+      can(regex("(?i)^\\s*allow\\s+.+\\s+to\\s+(inspect|read|use|manage)\\s+.+\\s+in\\s+(tenancy|compartment)\\b", s))
+    ])
+    error_message = "Allow statements must read \"Allow <subject> to <inspect|read|use|manage> <resource-type> in <tenancy|compartment ...>\". Offending statements: ${join(" | ", [for s in var.statements : s if can(regex("(?i)^\\s*allow\\s", s)) && !can(regex("(?i)^\\s*allow\\s+.+\\s+to\\s+(inspect|read|use|manage)\\s+.+\\s+in\\s+(tenancy|compartment)\\b", s))])}"
+  }
+}
+
+variable "allow_privileged_statements" {
+  description = <<-EOT
+    Opt in to deliberately privileged policy statements. When false (the default) the
+    module fails at plan time on:
+
+      * wildcard subjects or scopes — `any-user`, `any-group`, `any-tenancy` — that
+        carry no `where` condition, the OCI equivalent of a trust policy with a
+        wildcard principal;
+      * tenancy-wide `manage all-resources`, i.e. full tenancy administrator.
+
+    Set to true only when the broad grant is intentional and has been reviewed.
+  EOT
+  type        = bool
+  default     = false
 }
 
 variable "freeform_tags" {
