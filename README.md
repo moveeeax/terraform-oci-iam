@@ -9,7 +9,7 @@ statements.
 
 ```hcl
 module "iam" {
-  source = "github.com/moveeeax/terraform-oci-iam"
+  source = "github.com/moveeeax/terraform-oci-iam?ref=v1.0.0"
 
   compartment_id = var.compartment_id
   tenancy_id     = var.tenancy_id
@@ -64,7 +64,7 @@ delegation), set the escape hatch explicitly so the intent is visible in code re
 
 ```hcl
 module "tenancy_admins" {
-  source = "github.com/moveeeax/terraform-oci-iam"
+  source = "github.com/moveeeax/terraform-oci-iam?ref=v1.0.0"
 
   compartment_id = var.tenancy_id
   tenancy_id     = var.tenancy_id
