@@ -8,8 +8,16 @@ module "iam" {
   group_name     = "example-readers"
   policy_name    = "example-readers-policy"
 
+  # Instances in the compartment, as a principal for workload permissions.
+  dynamic_groups = {
+    example-instances = {
+      matching_rule = "ALL {instance.compartment.id = '${var.compartment_id}'}"
+    }
+  }
+
   statements = [
-    "Allow group example-readers to read all-resources in compartment id ${var.compartment_id}"
+    "Allow group example-readers to read all-resources in compartment id ${var.compartment_id}",
+    "Allow dynamic-group example-instances to read objects in compartment id ${var.compartment_id}",
   ]
 
   freeform_tags = {
@@ -30,6 +38,10 @@ variable "tenancy_id" {
 
 output "group_id" {
   value = module.iam.group_id
+}
+
+output "dynamic_group_ids" {
+  value = module.iam.dynamic_group_ids
 }
 
 output "policy_id" {

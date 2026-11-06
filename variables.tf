@@ -84,14 +84,47 @@ variable "allow_privileged_statements" {
   default     = false
 }
 
+variable "dynamic_groups" {
+  description = <<-EOT
+    Dynamic groups to create at the tenancy level, keyed by name. Workload principals
+    (instances, functions, OKE workloads) get permissions through a dynamic group, the
+    way users do through a group; reference one in `statements` as
+    `dynamic-group <name>`.
+
+      * `matching_rule` - Rule selecting the member resources, for example
+                          `ALL {instance.compartment.id = 'ocid1.compartment.oc1..x'}`.
+      * `description`   - Defaults to "Managed by Terraform".
+  EOT
+  type = map(object({
+    matching_rule = string
+    description   = optional(string, "Managed by Terraform")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for name in keys(var.dynamic_groups) : can(regex("^[A-Za-z0-9._-]+$", name))])
+    error_message = "dynamic_groups names may contain only letters, digits, '.', '_' and '-'."
+  }
+
+  validation {
+    condition     = alltrue([for dg in values(var.dynamic_groups) : trimspace(dg.matching_rule) != ""])
+    error_message = "Every dynamic group needs a non-empty matching_rule."
+  }
+
+  validation {
+    condition     = alltrue([for dg in values(var.dynamic_groups) : trimspace(dg.description) != ""])
+    error_message = "dynamic_groups descriptions must not be empty; OCI requires one."
+  }
+}
+
 variable "freeform_tags" {
-  description = "Free-form tags applied to the group and policy."
+  description = "Free-form tags applied to the group, dynamic groups and policy."
   type        = map(string)
   default     = {}
 }
 
 variable "defined_tags" {
-  description = "Defined tags applied to the group and policy, keyed as \"namespace.key\"."
+  description = "Defined tags applied to the group, dynamic groups and policy, keyed as \"namespace.key\"."
   type        = map(string)
   default     = {}
 }
