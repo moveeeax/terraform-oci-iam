@@ -15,12 +15,37 @@ locals {
     for s in var.statements : s
     if can(regex("(?i)\\bmanage\\s+all-resources\\s+in\\s+tenancy\\b", s))
   ]
+
+  # Dynamic groups no statement names as a subject. OCI writes the subject
+  # "dynamic-group <name>"; the spaced form and comma-separated lists of names
+  # ("dynamic-group a, b") count as well. Names outside the Default identity
+  # domain ('Domain'/'name') are not recognised and only produce the warning.
+  unreferenced_dynamic_groups = [
+    for name in keys(var.dynamic_groups) : name
+    if !anytrue([
+      for s in var.statements :
+      can(regex("(?i)\\bdynamic[- ]group\\s+([^\\s,]+\\s*,\\s*)*'?${replace(name, ".", "\\.")}'?(\\s|,|$)", s))
+    ])
+  ]
 }
 
 resource "oci_identity_group" "this" {
   compartment_id = var.tenancy_id
   name           = var.group_name
   description    = var.group_description
+
+  freeform_tags = var.freeform_tags
+  defined_tags  = var.defined_tags
+}
+
+# Like groups, dynamic groups live at the tenancy level.
+resource "oci_identity_dynamic_group" "this" {
+  for_each = var.dynamic_groups
+
+  compartment_id = var.tenancy_id
+  name           = each.key
+  description    = each.value.description
+  matching_rule  = each.value.matching_rule
 
   freeform_tags = var.freeform_tags
   defined_tags  = var.defined_tags
@@ -58,5 +83,14 @@ check "policy_references_managed_group" {
       for s in var.statements : strcontains(lower(s), lower("group ${var.group_name}"))
     ])
     error_message = "None of the policy statements reference \"group ${var.group_name}\". The group will be created with no permissions attached; check for a typo in the statement subject."
+  }
+}
+
+# Same reasoning for dynamic groups: one that no statement names gets no
+# permissions, and a typo in the subject is otherwise silent.
+check "policy_references_managed_dynamic_groups" {
+  assert {
+    condition     = length(local.unreferenced_dynamic_groups) == 0
+    error_message = "No policy statement references dynamic group(s) ${join(", ", local.unreferenced_dynamic_groups)}, so they will be created with no permissions attached. Check for a typo in the statement subject (\"dynamic-group <name>\")."
   }
 }

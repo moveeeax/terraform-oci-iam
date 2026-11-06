@@ -1,9 +1,9 @@
 # terraform-oci-iam
 
 Terraform module that manages an [Oracle Cloud Infrastructure](https://www.oracle.com/cloud/)
-IAM group together with a policy that grants it permissions. Groups are created at the
-tenancy level; the policy can be attached to any compartment (or the tenancy) via its
-statements.
+IAM group together with a policy that grants it permissions, and optionally dynamic groups
+for workload principals. Groups and dynamic groups are created at the tenancy level; the
+policy can be attached to any compartment (or the tenancy) via its statements.
 
 ## Usage
 
@@ -26,6 +26,41 @@ module "iam" {
   }
 }
 ```
+
+## Dynamic groups
+
+Instances, functions and OKE workloads authenticate as resource principals, and they get
+permissions through dynamic groups rather than groups. `dynamic_groups` creates them,
+keyed by name, with an `oci_identity_dynamic_group` each:
+
+```hcl
+module "iam" {
+  source = "github.com/moveeeax/terraform-oci-iam?ref=v1.2.0"
+
+  compartment_id = var.compartment_id
+  tenancy_id     = var.tenancy_id
+  group_name     = "app-operators"
+  policy_name    = "app-policy"
+
+  dynamic_groups = {
+    app-instances = {
+      matching_rule = "ALL {instance.compartment.id = '${var.compartment_id}'}"
+      description   = "Instances of the app compartment"
+    }
+  }
+
+  statements = [
+    "Allow group app-operators to manage instance-family in compartment id ${var.compartment_id}",
+    "Allow dynamic-group app-instances to read secret-family in compartment id ${var.compartment_id}",
+  ]
+}
+```
+
+The module uses the IAM dynamic group resource, the same API as its `oci_identity_group`.
+As with the group, a check warns when no statement names a dynamic group as
+`dynamic-group <name>` (`dynamic group <name>` and comma-separated lists count too).
+Names written `'Domain'/'name'` are not recognised by that check and only cause the
+warning.
 
 A runnable example lives in [`examples/basic`](examples/basic).
 
@@ -106,8 +141,9 @@ that does not exist, so this failure mode is otherwise silent.
 | `policy_description`| Description of the IAM policy.                                   | `string`       | `"Managed by Terraform"`  |    no    |
 | `statements`        | List of IAM policy statements. Validated — see [guardrails](#policy-statement-guardrails). | `list(string)` | n/a  |   yes    |
 | `allow_privileged_statements` | Opt in to wildcard-subject or tenancy-wide-admin statements.  | `bool`         | `false`                   |    no    |
-| `freeform_tags`     | Free-form tags applied to the group and policy.                 | `map(string)`  | `{}`                      |    no    |
-| `defined_tags`      | Defined tags applied to the group and policy.                   | `map(string)`  | `{}`                      |    no    |
+| `dynamic_groups`    | Dynamic groups keyed by name: `matching_rule`, optional `description`. | `map(object(...))` | `{}`               |    no    |
+| `freeform_tags`     | Free-form tags applied to the group, dynamic groups and policy. | `map(string)`  | `{}`                      |    no    |
+| `defined_tags`      | Defined tags applied to the group, dynamic groups and policy.   | `map(string)`  | `{}`                      |    no    |
 
 ## Outputs
 
@@ -115,6 +151,7 @@ that does not exist, so this failure mode is otherwise silent.
 |--------------|--------------------------------|
 | `group_id`   | OCID of the IAM group.         |
 | `group_name` | Name of the IAM group.         |
+| `dynamic_group_ids` | OCIDs of the dynamic groups, keyed by name. |
 | `policy_id`  | OCID of the IAM policy.        |
 | `statements` | Policy statements applied.     |
 
